@@ -13,12 +13,13 @@ class Value {
 
     Value* relu() const;
     Value* copy() const;
-    void backward() const;
+    Value* _zerograd() const;
+    float backward() const;
     void _backward() const;
 
     const bool operator==(const Value &other) const;
     const bool operator!=(const Value &other) const;
-    Value operator=(const Value &other) const;
+    const Value operator=(const Value &other) const;
     Value* operator+=(const Value& other) const;
     Value* operator+(const Value &other) const;
     Value* operator+(const float &f) const;
@@ -45,6 +46,7 @@ Value::Value(const float* data, const Value *parent1, const Value *parent2, Oper
   float* nvalue = new float();
 
   if(data){
+    
     std::memcpy(nvalue, data, sizeof(float));
   }
 
@@ -55,7 +57,7 @@ Value::Value(const float* data, const Value *parent1, const Value *parent2, Oper
   grad = 0;
 }
 
-void Value::backward() const {
+float Value::backward() const {
 
   grad = 1;
 
@@ -67,7 +69,7 @@ void Value::backward() const {
     }
   };
 
-  std::unordered_set<Value, hasher> seen;
+  std::unordered_set<Value, hasher> seen(262144);
   std::stack<const Value*> backward;
 
   std::function<void(const Value&)> walk = [&walk, &seen, &backward](const Value &v) -> void {
@@ -93,6 +95,8 @@ void Value::backward() const {
     backward.pop();
     v._backward();
   }
+
+  return grad;
 }
 
 void Value::_backward() const  {
@@ -131,6 +135,12 @@ void Value::_backward() const  {
   }
 }
 
+Value* Value::_zerograd() const {
+
+  return new Value(&val);
+}
+
+
 Value* Value::relu() const {
 
   float nv;
@@ -150,7 +160,7 @@ Value* Value::relu() const {
 
 Value* Value::copy() const {
 
-  return new Value(&val, p1, p2, op);
+    return new Value(&val, p1, p2, op);
 }
 
 
@@ -164,14 +174,14 @@ const bool Value::operator==(const Value &other) const {
   return this == &other;
 }
 
-Value Value::operator=(const Value &other) const {
+const Value Value::operator=(const Value &other) const {
 
-  return other;
+    return other;
 }
 
 Value* Value::operator+=(const Value& other) const {
 
-  return *this + other;
+    return *this + other;
 }
 
 Value* Value::operator+(const Value &other) const {
