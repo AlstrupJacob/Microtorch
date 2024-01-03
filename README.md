@@ -36,8 +36,7 @@ Value class constructs computational graph while performing arithmetic operation
 
 Basic nn implementation, used below to distinguish betwen points belonging to spacially distinct groups.
 
-<center><img src="moons.jpg" ...></center>
-<br />
+![moon](moons.jpg)
 
 ```c++
 #include <nn.hpp>
@@ -78,7 +77,8 @@ Value* loss(unsigned int bs, moons& data, nn& model) {
 	  accuracy += 1;
 	}
 
-	lvp = *lvp + *(*(*(*(*preds->operator[](i) * data.clr[indeces[i]]) * -1.0F) + 1)->relu() / bs); // max-margin loss
+	lvp = *lvp + *(*(*(*(*preds->operator[](i) * data.clr[indeces[i]]) * -1.0F) + 1)->relu() / bs);
+	// max-margin loss
   }
   
   accuracy /= bs;
