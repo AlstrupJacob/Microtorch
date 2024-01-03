@@ -74,7 +74,7 @@ Value* loss(unsigned int bs, moons& data, nn& model) {
   for (int i = 0; i < bs; i++) {
 
 	if (preds->operator[](i)->val * data.clr[indeces[i]] > 0) { // if prediction and actual are 
-	  //													       of same sign
+	  //							       of same sign
 	  accuracy += 1;
 	}
 
