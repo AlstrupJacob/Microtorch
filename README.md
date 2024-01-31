@@ -128,4 +128,4 @@ Batched matmul is only available for pairs of tensors wherein, for all batch dim
 
 ### What's next
 
-Einstein summation notation, broadcasting for element-wise arithmetic operations on Tensor class.
+Einstein summation notation
