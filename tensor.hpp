@@ -2,12 +2,13 @@
 #include <iostream>
 #include <vector>
 #include <random>
+#include <algorithm>
 
 class Tensor {
 
   public:
 
-    Tensor(std::vector<unsigned int> dims, std::vector<float>* data = nullptr);
+    Tensor(std::vector<unsigned int> dims = std::vector<unsigned int>{1, 1}, std::vector<float>* data = nullptr);
 
     Tensor* transpose();
     Tensor* _zerograd();    
@@ -50,7 +51,7 @@ class Tensor {
     static void checkEqualSize(const Tensor &a, const Tensor &b);
     static void checkMatMulPossible(const Tensor &a, const Tensor &b);
     static void checkTransposePossible(const Tensor &a);
-
+    static void checkBroadcastPossible(const Tensor& a, const Tensor& b);
 }; 
 
 Tensor::Tensor(std::vector<unsigned int> dimensions, std::vector<float>* data) {
@@ -223,6 +224,29 @@ void Tensor::checkTransposePossible(const Tensor &a) {
   }
 }
 
+void Tensor::checkBroadcastPossible(const Tensor& a, const Tensor& b) { //checking only for element-wise arithmetic operations 
+
+  unsigned int batch_dims = true;
+
+  for (int ms = 1; ms < std::min(a.dims.size(), b.dims.size()); ms++) {
+
+    if (a.dims[a.dims.size() - ms] == b.dims[b.dims.size() - ms] && batch_dims) {
+
+      continue;
+    }
+    else {
+
+      if (a.dims[a.dims.size() - ms] != 1 && b.dims[b.dims.size() - ms] != 1) {
+
+        std::cout << "Error: " << std::endl;
+        throw 0;
+      }
+
+      batch_dims = false;
+    }
+  }
+}
+
 Tensor* Tensor::transpose() {
 
   checkTransposePossible(*this);
@@ -243,49 +267,47 @@ Tensor* Tensor::matmul(const Tensor &a, const Tensor &b) {
 
   checkMatMulPossible(a, b);
 
-  std::vector<unsigned int> atds = a.dims;
-  std::vector<unsigned int> btds = b.dims;
+  std::vector<unsigned int> adims = a.dims;
+  std::vector<unsigned int> bdims = b.dims;
 
-  if (atds.size() == 1) {
+  if (adims.size() == 1) {
 
-    atds.insert(atds.begin(), 1);
+    adims.insert(adims.begin(), 1);
+  }
+  if (bdims.size() == 1) {
+
+    bdims.push_back(1);
   }
 
-  if (btds.size() == 1) {
-    
-    btds.push_back(1);
-  }
+  while (bdims.size() != adims.size()) {
 
-  while (btds.size() != atds.size()) {
+    if (adims.size() < bdims.size()) {
 
-    if (atds.size() < btds.size()) {
-
-      atds.insert(atds.begin(), 1);
+      adims.insert(adims.begin(), 1);
     }
-
     else {
-      
-      btds.insert(btds.begin(), 1);
+
+      bdims.insert(bdims.begin(), 1);
     }
   }
 
-  std::vector<unsigned int> rds;  
-  
-  rds.insert(rds.begin(), btds[btds.size() -1]);
-  rds.insert(rds.begin(), atds[atds.size() -2]);
-  
-  for (int i = 3; i < atds.size() + 1; i++) {
+  std::vector<unsigned int> resultdims;
 
-    rds.insert(rds.begin(), atds[atds.size() -i] * btds[btds.size() -i]);
+  resultdims.insert(resultdims.begin(), bdims[bdims.size() - 1]);
+  resultdims.insert(resultdims.begin(), adims[adims.size() - 2]);
+
+  for (int i = 3; i < adims.size() + 1; i++) {
+
+    resultdims.insert(resultdims.begin(), adims[adims.size() - i] * bdims[bdims.size() - i]);
   }
 
-  Tensor* c = new Tensor(rds);
+  Tensor* c = new Tensor(resultdims);
 
-  std::function<void(unsigned int&, std::vector<unsigned int>&)> matmul = [&matmul, &a, &b, &c, &rds, &atds, &btds](unsigned int &i, std::vector<unsigned int> &point) -> void {
+  std::function<void(unsigned int&, std::vector<unsigned int>&)> matmul = [&matmul, &a, &b, &c, &resultdims, &adims, &bdims](unsigned int &i, std::vector<unsigned int> &point) -> void {
 
-    if (i < rds.size() - 2) {
+    if (i < resultdims.size() - 2) {
 
-      for (int j = 0; j < rds[i]; j++) {
+      for (int j = 0; j < resultdims[i]; j++) {
 
         std::vector<unsigned int> tpoint = point;
         tpoint.push_back(j);
@@ -296,9 +318,9 @@ Tensor* Tensor::matmul(const Tensor &a, const Tensor &b) {
 
     else {
 
-      int base = rds[i] * rds[i + 1];
-      int abase = atds[i] * atds[i + 1];
-      int bbase = btds[i] * btds[i + 1];
+      int base = resultdims[i] * resultdims[i + 1];
+      int abase = adims[i] * adims[i + 1];
+      int bbase = bdims[i] * bdims[i + 1];
 
       int offset = 0;
       int aoffset = 0;
@@ -308,7 +330,7 @@ Tensor* Tensor::matmul(const Tensor &a, const Tensor &b) {
 
         offset += base * point[k];
 
-        if (atds[k] != 1) {
+        if (adims[k] != 1) {
 
           aoffset += abase * point[k];
         } 
@@ -318,14 +340,14 @@ Tensor* Tensor::matmul(const Tensor &a, const Tensor &b) {
           boffset += bbase * point[k];
         }
 
-        base *= rds[k];
-        abase *= atds[k];
-        bbase *= btds[k];
+        base *= resultdims[k];
+        abase *= adims[k];
+        bbase *= bdims[k];
       }
 
-      unsigned int N = atds[atds.size() -2];
-      unsigned int K = atds[atds.size() -1];
-      unsigned int M = btds[btds.size() -1];
+      unsigned int N = adims[adims.size() -2];
+      unsigned int K = adims[adims.size() -1];
+      unsigned int M = bdims[bdims.size() -1];
 
       #pragma omp parallel for
       for (int i = 0; i < N; i++) {
@@ -337,7 +359,7 @@ Tensor* Tensor::matmul(const Tensor &a, const Tensor &b) {
 
             nv = nv->operator+=(*(*a.ddata[aoffset + i * K + k] * *b.ddata[boffset + k * M + j]));
           }
-          c->ddata[offset + i * rds[rds.size()-1] + j] = nv;
+          c->ddata[offset + i * resultdims[resultdims.size()-1] + j] = nv;
         }
       }
     }
@@ -445,10 +467,10 @@ Tensor Tensor::randn_like(const Tensor &other) {
 
 void Tensor::backward() {
   
-  #pragma omp parallel for
-      for (int i = 0; i < sz; i++) {
-        ddata[i]->backward();
-      }
+#pragma omp parallel for
+  for (int i = 0; i < sz; i++) {
+    ddata[i]->backward();
+  }
 }
 
 Tensor* Tensor::relu() {
@@ -464,14 +486,14 @@ Tensor* Tensor::relu() {
 
 Tensor* Tensor::_zerograd() {
 
-    std::vector<float> v;
-    v.resize(sz);
-    for (int i = 0; i < sz; i++) {
+  std::vector<float> v;
+  v.resize(sz);
+  for (int i = 0; i < sz; i++) {
 
-        v[i] = ddata[i]->val;
-    }
+    v[i] = ddata[i]->val;
+  }
 
-    return new Tensor(dims, &v);
+  return new Tensor(dims, &v);
 }
 
 Value* Tensor::sum() {
@@ -480,7 +502,7 @@ Value* Tensor::sum() {
   Value* vp = new Value(&zero);
   for (int i = 0; i < sz; i++) {
     
-      vp = *vp + *ddata[i];
+    vp = *vp + *ddata[i];
   }
 
   return vp;
@@ -493,44 +515,196 @@ Value* Tensor::operator[](unsigned int i) {
 
 Tensor* Tensor::operator+(const Tensor &other) {
 
-  checkEqualSize(*this, other);
-  Tensor* result = new Tensor(dims);
-  for (int i = 0; i < sz; i++) {
-    
-    result->ddata[i] = *this->ddata[i] + *other.ddata[i];
-    }
+  checkBroadcastPossible(*this, other);
 
-  return result;
+  std::vector<unsigned int> adims = this->dims;
+  std::vector<unsigned int> bdims = other.dims;
+
+
+  while (adims.size() != bdims.size()) {
+
+    if (adims.size() < bdims.size()) {
+
+      adims.insert(adims.begin(), 1);
+    }
+    else {
+
+      bdims.insert(bdims.begin(), 1);
+    }
+  }
+
+  std::vector<unsigned int> resultdims;
+
+  for (int i = 0; i < adims.size(); i++) {
+
+    resultdims.insert(resultdims.end(), std::max(adims[i], bdims[i]));
+  }
+
+  Tensor* c = new Tensor(resultdims);
+
+  std::function<void(unsigned int&, std::vector<unsigned int>&)> operate = [&operate, this, &other, &c, &resultdims, &adims, &bdims](unsigned int& i, std::vector<unsigned int>& point) -> void {
+
+    if (i < resultdims.size() - std::min(this->dims.size(), other.dims.size())) {
+
+      for (int j = 0; j < resultdims[i]; j++) {
+
+        std::vector<unsigned int> tpoint = point;
+        tpoint.push_back(j);
+        unsigned int k = i + 1;
+        operate(k, tpoint);
+      }
+    }
+    else {
+
+      int base = 1;
+      int abase = 1;
+      int bbase = 1;
+
+      while (i < adims.size()) {
+
+        base *= resultdims[i];
+        abase *= adims[i];
+        bbase *= bdims[i];
+        i++;
+      }
+
+      int offset = 0;
+      int aoffset = 0;
+      int boffset = 0;
+
+      for (int k = point.size() - 1; k >= 0; k--) {
+
+        offset += base * point[k];
+
+        if (adims[k] != 1) {
+
+          aoffset += abase * point[k];
+        }
+        else {
+
+          boffset += bbase * point[k];
+        }
+
+        base *= resultdims[k];
+        abase *= adims[k];
+        bbase *= bdims[k];
+      }
+
+      for (int i = 0; i < std::min(this->sz, other.sz); i++) {
+
+        c->ddata[offset + i] = *this->ddata[aoffset + i] + *other.ddata[boffset + i];
+      }
+    }
+  };
+
+  std::vector<unsigned int> v;
+  unsigned int i = 0;
+  operate(i, v);
+
+  return c;
 }
 
 Tensor* Tensor::operator+(const float &f) {
-  
+
   Tensor* other = new Tensor(dims);
   for (int i = 0; i < sz; i++) {
 
     Value* nv = new Value(&f);
     other->ddata[i] = nv;
-    }
+  }
 
-  Tensor* result = new Tensor(dims);
-  for (int i = 0; i < sz; i++) {
-    
-    result->ddata[i] = *this->ddata[i] + *other->ddata[i];
-    }
-
-  return result;
+  return *this + *other;
 }
 
 Tensor* Tensor::operator-(const Tensor &other) {
 
-  checkEqualSize(*this,other);
-  Tensor* result = new Tensor(dims);
-  for (int i = 0; i < sz; i++) {
-    
-    result->ddata[i] = *this->ddata[i] - *other.ddata[i];
-    }
+  checkBroadcastPossible(*this, other);
 
-  return result;
+  std::vector<unsigned int> adims = this->dims;
+  std::vector<unsigned int> bdims = other.dims;
+
+
+  while (adims.size() != bdims.size()) {
+
+    if (adims.size() < bdims.size()) {
+
+      adims.insert(adims.begin(), 1);
+    }
+    else {
+
+      bdims.insert(bdims.begin(), 1);
+    }
+  }
+
+  std::vector<unsigned int> resultdims;
+
+  for (int i = 0; i < adims.size(); i++) {
+
+    resultdims.insert(resultdims.end(), std::max(adims[i], bdims[i]));
+  }
+
+  Tensor* c = new Tensor(resultdims);
+
+  std::function<void(unsigned int&, std::vector<unsigned int>&)> operate = [&operate, this, &other, &c, &resultdims, &adims, &bdims](unsigned int& i, std::vector<unsigned int>& point) -> void {
+
+    if (i < resultdims.size() - std::min(this->dims.size(), other.dims.size())) {
+
+      for (int j = 0; j < resultdims[i]; j++) {
+
+        std::vector<unsigned int> tpoint = point;
+        tpoint.push_back(j);
+        unsigned int k = i + 1;
+        operate(k, tpoint);
+      }
+    }
+    else {
+
+      int base = 1;
+      int abase = 1;
+      int bbase = 1;
+
+      while (i < adims.size()) {
+
+        base *= resultdims[i];
+        abase *= adims[i];
+        bbase *= bdims[i];
+        i++;
+      }
+
+      int offset = 0;
+      int aoffset = 0;
+      int boffset = 0;
+
+      for (int k = point.size() - 1; k >= 0; k--) {
+
+        offset += base * point[k];
+
+        if (adims[k] != 1) {
+
+          aoffset += abase * point[k];
+        }
+        else {
+
+          boffset += bbase * point[k];
+        }
+
+        base *= resultdims[k];
+        abase *= adims[k];
+        bbase *= bdims[k];
+      }
+
+      for (int i = 0; i < std::min(this->sz, other.sz); i++) {
+
+        c->ddata[offset + i] = *this->ddata[aoffset + i] - *other.ddata[boffset + i];
+      }
+    }
+  };
+
+  std::vector<unsigned int> v;
+  unsigned int i = 0;
+  operate(i, v);
+
+  return c;
 }
 
 Tensor* Tensor::operator-(const float &f) {
@@ -540,28 +714,101 @@ Tensor* Tensor::operator-(const float &f) {
 
     Value* nv = new Value(&f);
     other->ddata[i] = nv;
-    }
+  }
 
-  Tensor* result = new Tensor(dims);
-  for (int i = 0; i < sz; i++) {
-    
-    result->ddata[i] = *this->ddata[i] - *other->ddata[i];
-    }
-
-  return result;
+  return *this - *other;
 }
 
 
 Tensor* Tensor::operator*(const Tensor &other) {
 
-  checkEqualSize(*this,other);
-  Tensor* result = new Tensor(dims);
-  for (int i = 0; i < sz; i++) {
+  checkBroadcastPossible(*this, other);
 
-    result->ddata[i] = *this->ddata[i] * *other.ddata[i];
+  std::vector<unsigned int> adims = this->dims;
+  std::vector<unsigned int> bdims = other.dims;
+
+
+  while (adims.size() != bdims.size()) {
+
+    if (adims.size() < bdims.size()) {
+
+      adims.insert(adims.begin(), 1);
     }
+    else {
 
-  return result;
+      bdims.insert(bdims.begin(), 1);
+    }
+  }
+
+  std::vector<unsigned int> resultdims;
+
+  for (int i = 0; i < adims.size(); i++) {
+
+    resultdims.insert(resultdims.end(), std::max(adims[i], bdims[i]));
+  }
+
+  Tensor* c = new Tensor(resultdims);
+
+  std::function<void(unsigned int&, std::vector<unsigned int>&)> operate = [&operate, this, &other, &c, &resultdims, &adims, &bdims](unsigned int& i, std::vector<unsigned int>& point) -> void {
+
+    if (i < resultdims.size() - std::min(this->dims.size(), other.dims.size())) {
+
+      for (int j = 0; j < resultdims[i]; j++) {
+
+        std::vector<unsigned int> tpoint = point;
+        tpoint.push_back(j);
+        unsigned int k = i + 1;
+        operate(k, tpoint);
+      }
+    }
+    else {
+
+      int base = 1;
+      int abase = 1;
+      int bbase = 1;
+
+      while (i < adims.size()) {
+
+        base *= resultdims[i];
+        abase *= adims[i];
+        bbase *= bdims[i];
+        i++;
+      }
+
+      int offset = 0;
+      int aoffset = 0;
+      int boffset = 0;
+
+      for (int k = point.size() - 1; k >= 0; k--) {
+
+        offset += base * point[k];
+
+        if (adims[k] != 1) {
+
+          aoffset += abase * point[k];
+        }
+        else {
+
+          boffset += bbase * point[k];
+        }
+
+        base *= resultdims[k];
+        abase *= adims[k];
+        bbase *= bdims[k];
+      }
+
+      for (int i = 0; i < std::min(this->sz, other.sz); i++) {
+
+        c->ddata[offset + i] = *this->ddata[aoffset + i] * *other.ddata[boffset + i];
+      }
+    }
+  };
+
+  std::vector<unsigned int> v;
+  unsigned int i = 0;
+  operate(i, v);
+
+  return c;
 }
 
 Tensor* Tensor::operator*(const float &f) {
@@ -571,27 +818,100 @@ Tensor* Tensor::operator*(const float &f) {
 
     Value* nv = new Value(&f);
     other->ddata[i] = nv;
-    }
-
-  Tensor* result = new Tensor(dims);
-  for (int i = 0; i < sz; i++) {
-    
-    result->ddata[i] = *this->ddata[i] - *other->ddata[i];
-    }
-
-  return result;
+  }
+  
+  return *this * *other;
 }
 
 Tensor* Tensor::operator/(const Tensor &other) {
 
-  checkEqualSize(*this,other);
-  Tensor* result = new Tensor(dims);
-  for (int i = 0; i < sz; i++) {
-    
-    result->ddata[i] = *this->ddata[i] / *other.ddata[i];
-    }
+  checkBroadcastPossible(*this, other);
 
-  return result;
+  std::vector<unsigned int> adims = this->dims;
+  std::vector<unsigned int> bdims = other.dims;
+
+
+  while (adims.size() != bdims.size()) {
+
+    if (adims.size() < bdims.size()) {
+
+      adims.insert(adims.begin(), 1);
+    }
+    else {
+
+      bdims.insert(bdims.begin(), 1);
+    }
+  }
+
+  std::vector<unsigned int> resultdims;
+
+  for (int i = 0; i < adims.size(); i++) {
+
+    resultdims.insert(resultdims.end(), std::max(adims[i], bdims[i]));
+  }
+
+  Tensor* c = new Tensor(resultdims);
+
+  std::function<void(unsigned int&, std::vector<unsigned int>&)> operate = [&operate, this, &other, &c, &resultdims, &adims, &bdims](unsigned int& i, std::vector<unsigned int>& point) -> void {
+
+    if (i < resultdims.size() - std::min(this->dims.size(), other.dims.size())) {
+
+      for (int j = 0; j < resultdims[i]; j++) {
+
+        std::vector<unsigned int> tpoint = point;
+        tpoint.push_back(j);
+        unsigned int k = i + 1;
+        operate(k, tpoint);
+      }
+    }
+    else {
+
+      int base = 1;
+      int abase = 1;
+      int bbase = 1;
+
+      while (i < adims.size()) {
+
+        base *= resultdims[i];
+        abase *= adims[i];
+        bbase *= bdims[i];
+        i++;
+      }
+
+      int offset = 0;
+      int aoffset = 0;
+      int boffset = 0;
+
+      for (int k = point.size() - 1; k >= 0; k--) {
+
+        offset += base * point[k];
+
+        if (adims[k] != 1) {
+
+          aoffset += abase * point[k];
+        }
+        else {
+
+          boffset += bbase * point[k];
+        }
+
+        base *= resultdims[k];
+        abase *= adims[k];
+        bbase *= bdims[k];
+      }
+
+      for (int i = 0; i < std::min(this->sz, other.sz); i++) {
+
+        c->ddata[offset + i] = *this->ddata[aoffset + i] / *other.ddata[boffset + i];
+      }
+    }
+  };
+
+  std::vector<unsigned int> v;
+  unsigned int i = 0;
+  operate(i, v);
+
+  return c;
 }
     
 Tensor* Tensor::operator/(const float &f) {
@@ -601,13 +921,7 @@ Tensor* Tensor::operator/(const float &f) {
 
     Value* nv = new Value(&f);
     other->ddata[i] = nv;
-    }
+  }
 
-  Tensor* result = new Tensor(dims);
-  for (int i = 0; i < sz; i++) {
-    
-    result->ddata[i] = *this->ddata[i] / *other->ddata[i];
-    }
-    
-  return result;
+  return *this / *other;
 }

@@ -24,8 +24,8 @@ Layer::Layer(unsigned int din, unsigned int dout, Linearity linearity) {
 
   params.resize(2);
   std::vector<unsigned int>  adims{din, dout};
-  std::vector<unsigned int> bdims{30, 1, dout}; // no broadcasting implementation for element-wise arithmetic operations,
-  params[0] = Tensor::rand(adims); //              batch dimension is hardcoded here for purposes of example
+  std::vector<unsigned int> bdims{1, dout};
+  params[0] = Tensor::rand(adims);
   params[1] = Tensor::zeros(bdims);
 
   outd = dout;

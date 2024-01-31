@@ -39,6 +39,7 @@ class Value {
   private:
 
     Operation op;
+
 };
 
 Value::Value(const float* data, const Value *parent1, const Value *parent2, Operation operation) {
@@ -137,7 +138,7 @@ void Value::_backward() const  {
 
 Value* Value::_zerograd() const {
 
-  return new Value(&val);
+    return new Value(&val);
 }
 
 
