@@ -1,4 +1,4 @@
-# uname01
+# Microtorch
 
 ## Tensor Class with Automatic Differentiation
 
@@ -32,7 +32,7 @@ Value class constructs computational graph while performing arithmetic operation
 
   1.06317
 ```
-## nn Class
+## NN Class
 
 Basic nn implementation, used below to distinguish betwen points belonging to spacially distinct groups.
 
